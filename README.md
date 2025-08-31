@@ -12,7 +12,7 @@ Which now support 7 actions: **Standing, Walking, Sitting, Lying Down, Stand up,
 
 - ✅ **CPU Support**: Fixed CUDA hardcoded issues for running on CPU-only machines
 - ✅ **Model Loading**: Fixed PyTorch model loading compatibility for different devices
-- ✅ **Model Management**: Organized model files and download instructions
+- ✅ **Git LFS Support**: Added Git LFS support for large model files (*.pth)
 - ✅ **Dependencies**: Updated requirements and fixed compatibility issues
 - 🎯 **Tested**: Successfully tested with real fall detection videos
 
@@ -41,17 +41,17 @@ cd Human-Falling-Detect-Tracks
 pip install torch torchvision torchaudio opencv-python scipy matplotlib numpy
 ```
 
-3. Download pre-trained models:
-Due to file size limitations, model files need to be downloaded separately:
+3. Pre-trained models:
+**All pre-trained models are now included in the repository via Git LFS!**
 
-**Required Model Files:**
-- Download from [Google Drive Links](https://github.com/GajuuzZ/Human-Falling-Detect-Tracks#pre-trained-models)
-- Place files in the correct directories:
-  - `Models/yolo-tiny-onecls/best-model.pth`
-  - `Models/yolo-tiny-onecls/yolov3-tiny-onecls.cfg` 
-  - `Models/sppe/fast_res50_256x192.pth`
-  - `Models/sppe/fast_res101_320x256.pth` (optional)
-  - `Models/TSSTG/tsstg-model.pth`
+The repository includes all necessary model files:
+- `Models/yolo-tiny-onecls/best-model.pth` (34.7MB) - Tiny-YOLO person detection
+- `Models/yolo-tiny-onecls/yolov3-tiny-onecls.cfg` - YOLO configuration file
+- `Models/sppe/fast_res50_256x192.pth` (162.6MB) - ResNet50 pose estimation
+- `Models/sppe/fast_res101_320x256.pth` (238.9MB) - ResNet101 pose estimation
+- `Models/TSSTG/tsstg-model.pth` (24.7MB) - ST-GCN action recognition
+
+**Note**: If you have Git LFS installed, these files will be automatically downloaded when you clone the repository.
 
 ## Data
 
@@ -59,16 +59,6 @@ This project has trained a new Tiny-YOLO oneclass model to detect only person ob
 
 For actions recognition used data from [Le2i](http://le2i.cnrs.fr/Fall-detection-Dataset?lang=fr) Fall detection Dataset (Coffee room, Home) extract skeleton-pose by AlphaPose and labeled each action frames by hand for training ST-GCN model.
 
-## Pre-Trained Models
-
-Due to GitHub size limitations, model files need to be downloaded separately:
-
-**Download Links (from original repo):**
-- **Tiny-YOLO oneclass**: [best-model.pth](https://drive.google.com/file/d/1obEbWBSm9bXeg10FriJ7R2cGLRsg-AfP/view?usp=sharing) (34.7MB) + [config](https://drive.google.com/file/d/19sPzBZjAjuJQ3emRteHybm2SG25w9Wn5/view?usp=sharing)
-- **SPPE FastPose**: 
-  - ResNet50: [fast_res50_256x192.pth](https://drive.google.com/file/d/1IPfCDRwCmQDnQy94nT1V-_NVtTEi4VmU/view?usp=sharing) (162.6MB)
-  - ResNet101: [fast_res101_320x256.pth](https://drive.google.com/file/d/1N2MgE1Esq6CKYA6FyZVKpPwHRyOCrzA0/view?usp=sharing) (238.9MB)
-- **ST-GCN Action Recognition**: [tsstg-model.pth](https://drive.google.com/file/d/1mQQ4JHe58ylKbBqTjuKzpwN2nwKOWJ9u/view?usp=sharing) (24.7MB)
 
 ## Basic Usage
 
