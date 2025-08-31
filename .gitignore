@@ -130,3 +130,6 @@ Thumbs.db
 # Output files
 output/
 results/
+
+# Large model files (download separately)
+*.pth
