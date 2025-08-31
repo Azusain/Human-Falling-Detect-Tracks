@@ -12,7 +12,7 @@ Which now support 7 actions: **Standing, Walking, Sitting, Lying Down, Stand up,
 
 - ✅ **CPU Support**: Fixed CUDA hardcoded issues for running on CPU-only machines
 - ✅ **Model Loading**: Fixed PyTorch model loading compatibility for different devices
-- ✅ **Git LFS**: Added Git LFS support for large model files (*.pth)
+- ✅ **Model Management**: Organized model files and download instructions
 - ✅ **Dependencies**: Updated requirements and fixed compatibility issues
 - 🎯 **Tested**: Successfully tested with real fall detection videos
 
@@ -59,15 +59,16 @@ This project has trained a new Tiny-YOLO oneclass model to detect only person ob
 
 For actions recognition used data from [Le2i](http://le2i.cnrs.fr/Fall-detection-Dataset?lang=fr) Fall detection Dataset (Coffee room, Home) extract skeleton-pose by AlphaPose and labeled each action frames by hand for training ST-GCN model.
 
-## Pre-Trained Models (Git LFS)
+## Pre-Trained Models
 
-All pre-trained models are stored using Git LFS:
+Due to GitHub size limitations, model files need to be downloaded separately:
 
-- **Tiny-YOLO oneclass**: `Models/yolo-tiny-onecls/best-model.pth` (34.7MB) + `yolov3-tiny-onecls.cfg`
+**Download Links (from original repo):**
+- **Tiny-YOLO oneclass**: [best-model.pth](https://drive.google.com/file/d/1obEbWBSm9bXeg10FriJ7R2cGLRsg-AfP/view?usp=sharing) (34.7MB) + [config](https://drive.google.com/file/d/19sPzBZjAjuJQ3emRteHybm2SG25w9Wn5/view?usp=sharing)
 - **SPPE FastPose**: 
-  - ResNet50: `Models/sppe/fast_res50_256x192.pth` (162.6MB)
-  - ResNet101: `Models/sppe/fast_res101_320x256.pth` (238.9MB)
-- **ST-GCN Action Recognition**: `Models/TSSTG/tsstg-model.pth` (24.7MB)
+  - ResNet50: [fast_res50_256x192.pth](https://drive.google.com/file/d/1IPfCDRwCmQDnQy94nT1V-_NVtTEi4VmU/view?usp=sharing) (162.6MB)
+  - ResNet101: [fast_res101_320x256.pth](https://drive.google.com/file/d/1N2MgE1Esq6CKYA6FyZVKpPwHRyOCrzA0/view?usp=sharing) (238.9MB)
+- **ST-GCN Action Recognition**: [tsstg-model.pth](https://drive.google.com/file/d/1mQQ4JHe58ylKbBqTjuKzpwN2nwKOWJ9u/view?usp=sharing) (24.7MB)
 
 ## Basic Usage
 
