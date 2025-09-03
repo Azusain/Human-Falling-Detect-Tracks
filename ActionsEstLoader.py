@@ -13,8 +13,10 @@ class TSSTG(object):
         device: (str) Device to load the model on 'cpu' or 'cuda'.
     """
     def __init__(self,
-                 weight_file='./Models/TSSTG/tsstg-model.pth',
+                 weight_file=None,
                  device='cuda'):
+        if weight_file is None:
+            weight_file = os.path.join(os.path.dirname(__file__), 'Models', 'TSSTG', 'tsstg-model.pth')
         self.graph_args = {'strategy': 'spatial'}
         self.class_names = ['Standing', 'Walking', 'Sitting', 'Lying Down',
                             'Stand up', 'Sit down', 'Fall Down']
