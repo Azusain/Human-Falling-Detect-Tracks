@@ -141,7 +141,6 @@ class CamLoader_Q:
             else:
                 with self.Q.mutex:
                     self.Q.queue.clear()
-            # time.sleep(0.05)
 
     def grabbed(self):
         """Return `True` if can read a frame."""
@@ -166,39 +165,3 @@ class CamLoader_Q:
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.stream.isOpened():
             self.stream.release()
-
-
-if __name__ == '__main__':
-    fps_time = 0
-
-    # Using threading.
-    cam = CamLoader(0).start()
-    while cam.grabbed():
-        frames = cam.getitem()
-
-        frames = cv2.putText(frames, 'FPS: %f' % (1.0 / (time.time() - fps_time)),
-                             (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        fps_time = time.time()
-        cv2.imshow('frame', frames)
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-    cam.stop()
-    cv2.destroyAllWindows()
-
-    # Normal video capture.
-    """cam = cv2.VideoCapture(0)
-    while True:
-        ret, frame = cam.read()
-        if ret:
-            #time.sleep(0.05)
-            #frame = (cv2.flip(frame, 1) / 255.).astype(np.float)
-
-            frame = cv2.putText(frame, 'FPS: %f' % (1.0 / (time.time() - fps_time)),
-                                (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            fps_time = time.time()
-            cv2.imshow('frame', frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-    cam.release()
-    cv2.destroyAllWindows()"""
