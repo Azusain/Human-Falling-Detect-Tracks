@@ -1,20 +1,16 @@
 import os
-import cv2
-import time
 import torch
 import argparse
 import numpy as np
-
 from Detection.Utils import ResizePadding
-from CameraLoader import CamLoader, CamLoader_Q
+from CameraLoader import CamLoader
 from DetectorLoader import TinyYOLOv3_onecls
-
 from PoseEstimateLoader import SPPE_FastPose
-from fn import draw_single
-
 from Track.Tracker import Detection, Tracker
 from ActionsEstLoader import TSSTG
+import os
 
+ori_frame = None
 
 def kpt2bbox(kpt, ex=20):
     """Get bbox that hold on all of the keypoints (x,y)
@@ -23,7 +19,6 @@ def kpt2bbox(kpt, ex=20):
     """
     return np.array((kpt[:, 0].min() - ex, kpt[:, 1].min() - ex,
                      kpt[:, 0].max() + ex, kpt[:, 1].max() + ex))
-
 
 # action Classes:
 # Standing
@@ -34,25 +29,39 @@ def kpt2bbox(kpt, ex=20):
 # Sit down
 # Fall Down    
 # pending..    
-def handle(frame, action, track_id, bbox, score):
-    h, w = frame.shape[:2]
-    norm_x1 = bbox[0] / w
-    norm_y1 = bbox[1] / h
-    norm_x2 = bbox[2] / w
-    norm_y2 = bbox[3] / h
-    # 这里写你的处理逻辑，比如告警/存库/消息推送等
-    print(f"{action}: {score:.2f}")
+# fuck your 384 input.
+# TODO: track_id is unused.
+def handle(action, track_id, bbox, score, ori_frame):
+    orig_h, orig_w = ori_frame.shape[:2]
+    scale = 384 / max(orig_h, orig_w)
+    new_h = int(orig_h * scale)
+    new_w = int(orig_w * scale)
+    pad_h = 384 - new_h
+    pad_w = 384 - new_w
+    top = pad_h // 2
+    left = pad_w // 2
+    x1_orig = (bbox[0] - left) / scale
+    y1_orig = (bbox[1] - top) / scale
+    x2_orig = (bbox[2] - left) / scale
+    y2_orig = (bbox[3] - top) / scale
+    if x1_orig <= 0 or y1_orig <= 0 or x2_orig >= orig_w or y2_orig >= orig_h:
+        return
+    norm_x1 = x1_orig / orig_w
+    norm_y1 = y1_orig / orig_h
+    norm_x2 = x2_orig / orig_w
+    norm_y2 = y2_orig / orig_h
+    print(f"{action}: {score:.2f} | bbox normalized: ({norm_x1:.3f}, {norm_y1:.3f}, {norm_x2:.3f}, {norm_y2:.3f})")
 
-# ===== 关键修复：用工厂函数创建带有 resize_fn 的预处理 =====
+
 def build_preproc(inp_dets):
     resize_fn = ResizePadding(inp_dets, inp_dets)
     def _preproc(image):
-        # 根据你的项目需要，也可以在这里做额外的变换
         return resize_fn(image)
     return _preproc
 
 
 def run(args):
+    global ori_frame, g_current_bbox, g_inp_size
     device = args.device
 
     # 模型
@@ -71,31 +80,21 @@ def run(args):
     # 摄像头/文件/RTSP
     cam_source = args.camera
     if isinstance(cam_source, str) and os.path.isfile(cam_source):
-        try:
-          cam = CamLoader_Q(cam_source, queue_size=1000, preprocess=preproc).start()
-        except:
-          print("failed to open file...")
-          return
+        print("not implemented")
+        exit(-1)
     else:
         print(f"streaming mode: {cam_source}")
-        try:
-          cam = CamLoader(cam_source, preprocess=preproc).start()
-        except:
-          print("failed to open stream...")
-          return
+        cam = CamLoader(cam_source, preprocess=preproc).start()
+        if not cam.valid:
+            print("failed to open stream...")
+            return
           
-    # 输出视频（可选）
     writer = None
-    if args.save_out:
-        codec = cv2.VideoWriter_fourcc(*'MJPG')
-        writer = cv2.VideoWriter(args.save_out, codec, 30, (inp_dets * 2, inp_dets * 2))
-
-    fps_time = time.time()
     f = 0
     while cam.grabbed():
         f += 1
         frame = cam.getitem()
-
+        ori_frame = frame
         # 检测
         detected = detect_model.detect(frame, need_resize=False, expand_bb=10)
 
@@ -139,45 +138,24 @@ def run(args):
                 elif action == 'Lying Down':
                     clr = (255, 200, 0)
 
-
             # 仅在本帧有更新时画框/骨架
             if track.time_since_update == 0:
-                handle(frame, action, track_id, bbox, score)
-                # TODO: for testing.
-                # frame = cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 1)
-                # frame = cv2.putText(frame, str(track_id), (center[0], center[1]),
-                #                     cv2.FONT_HERSHEY_COMPLEX, 0.4, (255, 0, 0), 2)
-                # frame = cv2.putText(frame, f"{action}:{score:.2f}", (bbox[0] + 5, bbox[1] + 15),
-                #                     cv2.FONT_HERSHEY_COMPLEX, 0.4, clr, 1)
-
-
-        # 注意：如果视频写入需要 BGR，不要把通道翻转；窗口显示也用 BGR 就行
+                handle(action, track_id, bbox, score, cam.ori_frame)
         if writer:
             writer.write(frame)
-
-        # TODO: we dont need gui display.
-        cv2.imshow('frame', frame)  
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
 
     cam.stop()
     if writer:
         writer.release()
-    # TODO: we dont need gui dispaly.
-    cv2.destroyAllWindows()
 
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Human Fall Detection')
-    parser.add_argument('-C', '--camera', default="")
-    parser.add_argument('--detection_input_size', type=int, default=384)
-    parser.add_argument('--pose_input_size', type=str, default='224x160')
-    parser.add_argument('--pose_backbone', type=str, default='resnet50')
-    parser.add_argument('--show_detected', default=False, action='store_true')
-    parser.add_argument('--show_skeleton', default=True, action='store_true')
-    parser.add_argument('--save_out', type=str, default='')
-    parser.add_argument('--device', type=str, default='cuda')
-    args = parser.parse_args()
-
-    while True:
-      run(args)
+# device -> 'cuda' or 'cpu'.
+def Start(rtsp_addr, device='cuda'):
+  parser = argparse.ArgumentParser(description='Human Fall Detection')
+  parser.add_argument('-C', '--camera', default=rtsp_addr)
+  parser.add_argument('--detection_input_size', type=int, default=384)
+  parser.add_argument('--pose_input_size', type=str, default='224x160')
+  parser.add_argument('--pose_backbone', type=str, default='resnet50')
+  parser.add_argument('--device', type=str, default=device)
+  args = parser.parse_args()
+  while True:
+    run(args)
