@@ -15,19 +15,6 @@ from fn import draw_single
 from Track.Tracker import Detection, Tracker
 from ActionsEstLoader import TSSTG
 
-#source = '../Data/test_video/test7.mp4'
-#source = '../Data/falldata/Home/Videos/video (2).avi'  # hard detect
-source = '../Data/falldata/Home/Videos/video (1).avi'
-#source = 2
-
-
-def preproc(image):
-    """preprocess function for CameraLoader.
-    """
-    image = resize_fn(image)
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    return image
-
 
 def kpt2bbox(kpt, ex=20):
     """Get bbox that hold on all of the keypoints (x,y)
@@ -38,10 +25,23 @@ def kpt2bbox(kpt, ex=20):
                      kpt[:, 0].max() + ex, kpt[:, 1].max() + ex))
 
 
-# ===== 你的回调：在任何状态下都调用 =====
-def handle(frame, action, track_id):
+# action Classes:
+# Standing
+# Walking
+# Sitting
+# Lying Down
+# Stand up
+# Sit down
+# Fall Down    
+# pending..    
+def handle(frame, action, track_id, bbox, score):
+    h, w = frame.shape[:2]
+    norm_x1 = bbox[0] / w
+    norm_y1 = bbox[1] / h
+    norm_x2 = bbox[2] / w
+    norm_y2 = bbox[3] / h
     # 这里写你的处理逻辑，比如告警/存库/消息推送等
-    print(f"[HANDLE] track={track_id}, action={action}")
+    print(f"{action}: {score:.2f}")
 
 # ===== 关键修复：用工厂函数创建带有 resize_fn 的预处理 =====
 def build_preproc(inp_dets):
@@ -52,7 +52,7 @@ def build_preproc(inp_dets):
     return _preproc
 
 
-def run_demo(args):
+def run(args):
     device = args.device
 
     # 模型
@@ -71,12 +71,19 @@ def run_demo(args):
     # 摄像头/文件/RTSP
     cam_source = args.camera
     if isinstance(cam_source, str) and os.path.isfile(cam_source):
-        cam = CamLoader_Q(cam_source, queue_size=1000, preprocess=preproc).start()
+        try:
+          cam = CamLoader_Q(cam_source, queue_size=1000, preprocess=preproc).start()
+        except:
+          print("failed to open file...")
+          return
     else:
         print(f"streaming mode: {cam_source}")
-        cam = CamLoader(int(cam_source) if (isinstance(cam_source, str) and cam_source.isdigit()) else cam_source,
-                        preprocess=preproc).start()
-
+        try:
+          cam = CamLoader(cam_source, preprocess=preproc).start()
+        except:
+          print("failed to open stream...")
+          return
+          
     # 输出视频（可选）
     writer = None
     if args.save_out:
@@ -107,14 +114,10 @@ def run_demo(args):
                                                     ps['kp_score'].numpy()), axis=1),
                                     ps['kp_score'].mean().numpy()) for ps in poses]
 
-            if args.show_detected:
-                for bb in detected[:, 0:5]:
-                    frame = cv2.rectangle(frame, (bb[0], bb[1]), (bb[2], bb[3]), (0, 0, 255), 1)
-
         # 更新跟踪
         tracker.update(detections)
 
-        # 动作识别 + 可视化 + 你的 handle
+        # action rocognition &  handle.
         for track in tracker.tracks:
             if not track.is_confirmed():
                 continue
@@ -124,54 +127,49 @@ def run_demo(args):
             center = track.get_center().astype(int)
 
             action = 'pending..'
+            score = 0.0
             clr = (0, 255, 0)
             if len(track.keypoints_list) == 30:
                 pts = np.array(track.keypoints_list, dtype=np.float32)
                 out = action_model.predict(pts, frame.shape[:2])
-                action_name = action_model.class_names[out[0].argmax()]
-                action = f'{action_name}: {out[0].max() * 100:.2f}%'
-                if action_name == 'Fall Down':
+                action = action_model.class_names[out[0].argmax()]
+                score = out[0].max() * 100
+                if action == 'Fall Down':
                     clr = (255, 0, 0)
-                elif action_name == 'Lying Down':
+                elif action == 'Lying Down':
                     clr = (255, 200, 0)
 
-            # —— 在每个 track 上调用你的处理函数（不管当前状态是否 pending）——
-            handle(frame, action, track_id)
 
             # 仅在本帧有更新时画框/骨架
             if track.time_since_update == 0:
-                if args.show_skeleton and len(track.keypoints_list) > 0:
-                    frame = draw_single(frame, track.keypoints_list[-1])
-                frame = cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 1)
-                frame = cv2.putText(frame, str(track_id), (center[0], center[1]),
-                                    cv2.FONT_HERSHEY_COMPLEX, 0.4, (255, 0, 0), 2)
-                frame = cv2.putText(frame, action, (bbox[0] + 5, bbox[1] + 15),
-                                    cv2.FONT_HERSHEY_COMPLEX, 0.4, clr, 1)
+                handle(frame, action, track_id, bbox, score)
+                # TODO: for testing.
+                # frame = cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 1)
+                # frame = cv2.putText(frame, str(track_id), (center[0], center[1]),
+                #                     cv2.FONT_HERSHEY_COMPLEX, 0.4, (255, 0, 0), 2)
+                # frame = cv2.putText(frame, f"{action}:{score:.2f}", (bbox[0] + 5, bbox[1] + 15),
+                #                     cv2.FONT_HERSHEY_COMPLEX, 0.4, clr, 1)
 
-        # 显示/FPS
-        frame = cv2.resize(frame, (0, 0), fx=2., fy=2.)
-        fps = 1.0 / max(1e-6, (time.time() - fps_time))
-        frame = cv2.putText(frame, f"{f}, FPS: {fps:.2f}", (10, 20),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-        fps_time = time.time()
 
         # 注意：如果视频写入需要 BGR，不要把通道翻转；窗口显示也用 BGR 就行
         if writer:
             writer.write(frame)
 
-        cv2.imshow('frame', frame)  # BGR 显示也没问题
+        # TODO: we dont need gui display.
+        cv2.imshow('frame', frame)  
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
     cam.stop()
     if writer:
         writer.release()
+    # TODO: we dont need gui dispaly.
     cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Human Fall Detection')
-    parser.add_argument('-C', '--camera', default=source)
+    parser.add_argument('-C', '--camera', default="")
     parser.add_argument('--detection_input_size', type=int, default=384)
     parser.add_argument('--pose_input_size', type=str, default='224x160')
     parser.add_argument('--pose_backbone', type=str, default='resnet50')
@@ -181,4 +179,5 @@ if __name__ == '__main__':
     parser.add_argument('--device', type=str, default='cuda')
     args = parser.parse_args()
 
-    run_demo(args)
+    while True:
+      run(args)
