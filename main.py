@@ -1,13 +1,20 @@
+from operator import contains
 import os
 import torch
 import argparse
 import numpy as np
+import cv2
 from Detection.Utils import ResizePadding
 from CameraLoader import CamLoader
 from DetectorLoader import TinyYOLOv3_onecls
 from PoseEstimateLoader import SPPE_FastPose
 from Track.Tracker import Detection, Tracker
 from ActionsEstLoader import TSSTG
+import os
+
+import cv2
+from PIL import Image, ImageDraw, ImageFont
+from datetime import datetime
 import os
 
 ori_frame = None
@@ -20,6 +27,27 @@ def kpt2bbox(kpt, ex=20):
     return np.array((kpt[:, 0].min() - ex, kpt[:, 1].min() - ex,
                      kpt[:, 0].max() + ex, kpt[:, 1].max() + ex))
 
+
+TTF_PATH = "resources/simsun.ttc"
+
+def cv2ImgAddText(img, text, left, top, ttf_path, textColor=(0, 255, 0), textSize=40):
+    if isinstance(img, np.ndarray):  
+        img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(img)
+    fontStyle = ImageFont.truetype(ttf_path, textSize, encoding="utf-8") 
+    draw.text((left, top), text, textColor, font=fontStyle)  
+    return cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2BGR)
+
+week_map = {
+    0: "星期一",
+    1: "星期二",
+    2: "星期三",
+    3: "星期四",
+    4: "星期五",
+    5: "星期六",
+    6: "星期日",
+}
+
 # action Classes:
 # Standing
 # Walking
@@ -31,8 +59,12 @@ def kpt2bbox(kpt, ex=20):
 # pending..    
 # fuck your 384 input.
 # TODO: track_id is unused.
-def handle(action, track_id, bbox, score, ori_frame):
-    orig_h, orig_w = ori_frame.shape[:2]
+def handle(action: str, track_id, bbox, score, ori_frame, camera_name="测试摄像头", save_dir="output"):
+    if not action.__contains__("Fall Down") and not action.__contains__("Lying Down"):
+      print(f"skip action {action}")
+      return
+    # de-scale to original size.
+    orig_h, orig_w = ori_frame.shape[:2]    
     scale = 384 / max(orig_h, orig_w)
     new_h = int(orig_h * scale)
     new_w = int(orig_w * scale)
@@ -44,13 +76,75 @@ def handle(action, track_id, bbox, score, ori_frame):
     y1_orig = (bbox[1] - top) / scale
     x2_orig = (bbox[2] - left) / scale
     y2_orig = (bbox[3] - top) / scale
+    
+    # filter out the detection result that touch the boundary.
     if x1_orig <= 0 or y1_orig <= 0 or x2_orig >= orig_w or y2_orig >= orig_h:
         return
+    x1_orig = max(0, int(x1_orig))
+    y1_orig = max(0, int(y1_orig))
+    x2_orig = min(orig_w - 1, int(x2_orig))
+    y2_orig = min(orig_h - 1, int(y2_orig))
+    
+    # normalization.
     norm_x1 = x1_orig / orig_w
     norm_y1 = y1_orig / orig_h
     norm_x2 = x2_orig / orig_w
     norm_y2 = y2_orig / orig_h
     print(f"{action}: {score:.2f} | bbox normalized: ({norm_x1:.3f}, {norm_y1:.3f}, {norm_x2:.3f}, {norm_y2:.3f})")
+    
+    result_img = ori_frame.copy()
+    cv2.rectangle(result_img, (x1_orig, y1_orig), (x2_orig, y2_orig), (0, 255, 0), 2)
+    
+    # draw confidence.
+    confidence_text = f"{action}: {score:.2f}"
+    confidence_y = max(y1_orig - 10, 30)  # 确保文本不会超出图像边界
+    try:
+        result_img = cv2ImgAddText(result_img, confidence_text, x1_orig, confidence_y, 
+                                 TTF_PATH, textColor=(255, 255, 255), textSize=36)
+    except Exception as e:
+        print(f"failed to add confidence text: {e}")
+        # TODO: fallback to opencv default font.
+        cv2.putText(result_img, confidence_text, (x1_orig, confidence_y), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+    
+    # datetime text at the top-right.
+    now = datetime.now()
+    date_text = now.strftime("%Y年%m月%d日 ") + week_map[now.weekday()] + now.strftime(" %H:%M:%S")
+    try:
+        # TODO: text size.
+        result_img = cv2ImgAddText(result_img, date_text, 10, 10, 
+                                 TTF_PATH, textColor=(255, 255, 255), textSize=48)
+    except Exception as e:
+        print(f"failed to add datetime text: {e}")
+        # TODO: fallback to English datetime.
+        date_text_en = now.strftime("%Y-%m-%d %H:%M:%S")
+        cv2.putText(result_img, date_text_en, (10, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    
+    # add camera name text at the bottom-right.
+    text_size = cv2.getTextSize(camera_name, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
+    camera_x = orig_w - text_size[0] - 10
+    camera_y = orig_h - 10
+    try:
+        result_img = cv2ImgAddText(result_img, camera_name, camera_x, camera_y - 30, 
+                                 TTF_PATH, textColor=(255, 255, 255), textSize=48)
+    except Exception as e:
+        print(f"failed to add camera name: {e}")
+        # TODO: fallback to default opencv font.
+        cv2.putText(result_img, camera_name, (camera_x, camera_y), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    
+    # save result to local storage.
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir) 
+    timestamp = now.strftime("%Y%m%d_%H%M%S_%f")[:-3]
+    filename = f"{action}_{timestamp}_track{track_id}.jpg"
+    filepath = os.path.join(save_dir, filename)
+    success = cv2.imwrite(filepath, result_img)
+    if success:
+        print(f"result saved to path: {filepath}")
+    else:
+        print(f"failed to save result: {filepath}")
 
 
 def build_preproc(inp_dets):
@@ -84,10 +178,14 @@ def run(args):
         exit(-1)
     else:
         print(f"streaming mode: {cam_source}")
-        cam = CamLoader(cam_source, preprocess=preproc).start()
-        if not cam.valid:
-            print("failed to open stream...")
-            return
+        try:
+          cam = CamLoader(cam_source, preprocess=preproc).start()
+          if not cam.valid:
+              print("failed to open stream...")
+              return
+        except:
+              print("failed to open stream...")
+              return
           
     writer = None
     f = 0
@@ -148,14 +246,14 @@ def run(args):
     if writer:
         writer.release()
 
-# device -> 'cuda' or 'cpu'.
-def Start(rtsp_addr, device='cuda'):
+if __name__ =="__main__":
   parser = argparse.ArgumentParser(description='Human Fall Detection')
-  parser.add_argument('-C', '--camera', default=rtsp_addr)
+  parser.add_argument('-i', '--camera',  default="rtsp://admin:hik12345+@192.168.1.84:554/Streaming/Channels/901")
   parser.add_argument('--detection_input_size', type=int, default=384)
   parser.add_argument('--pose_input_size', type=str, default='224x160')
   parser.add_argument('--pose_backbone', type=str, default='resnet50')
-  parser.add_argument('--device', type=str, default=device)
+  parser.add_argument('-d', '--device', type=str, default='cuda', help='cuda or cpu')
   args = parser.parse_args()
   while True:
     run(args)
+    print("reopen stream...")
