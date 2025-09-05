@@ -5,6 +5,7 @@ import torchvision.transforms as transforms
 
 from queue import Queue
 from threading import Thread
+import os
 
 from Detection.Models import Darknet
 from Detection.Utils import non_max_suppression, ResizePadding
@@ -22,11 +23,17 @@ class TinyYOLOv3_onecls(object):
     """
     def __init__(self,
                  input_size=416,
-                 config_file='Models/yolo-tiny-onecls/yolov3-tiny-onecls.cfg',
-                 weight_file='Models/yolo-tiny-onecls/best-model.pth',
+                 config_file=None,
+                 weight_file=None,
                  nms=0.2,
                  conf_thres=0.45,
                  device='cuda'):
+
+        base_dir = os.path.dirname(__file__)
+        if config_file is None:
+            config_file = os.path.join(base_dir, 'Models/yolo-tiny-onecls/yolov3-tiny-onecls.cfg')
+        if weight_file is None:
+            weight_file = os.path.join(base_dir, 'Models/yolo-tiny-onecls/best-model.pth')
         self.input_size = input_size
         self.model = Darknet(config_file).to(device)
         if device == 'cpu':
