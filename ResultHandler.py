@@ -43,7 +43,7 @@ week_map = {
 # pending..    
 # fuck your 384 input.
 # TODO: track_id is unused.
-def handle(task_id, action: str, track_id, bbox, score, ori_frame, camera_name="测试摄像头", save_dir="output"):
+def handle(task_id, action: str, track_id, bbox, score, ori_frame):
     if not action.__contains__("Fall Down") and not action.__contains__("Lying Down"):
       # logger.info(f"skip action {action}")
       return
