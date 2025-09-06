@@ -11,27 +11,6 @@ from collections import deque
 g_images = {}
 g_images_lock = threading.Lock()
 
-TTF_PATH = "resources/simsun.ttc"
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
-
-def cv2ImgAddText(img, text, left, top, ttf_path, textColor=(0, 255, 0), textSize=40):
-    if isinstance(img, np.ndarray):  
-        img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-    draw = ImageDraw.Draw(img)
-    fontStyle = ImageFont.truetype(ttf_path, textSize, encoding="utf-8") 
-    draw.text((left, top), text, textColor, font=fontStyle)  
-    return cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2BGR)
-
-week_map = {
-    0: "星期一",
-    1: "星期二",
-    2: "星期三",
-    3: "星期四",
-    4: "星期五",
-    5: "星期六",
-    6: "星期日",
-}
-
 # action Classes:
 # Standing
 # Walking
