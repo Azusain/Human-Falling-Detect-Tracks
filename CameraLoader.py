@@ -4,7 +4,6 @@ import time
 from threading import Thread, Lock
 
 from loguru import logger
-from sympy import true
 
 
 class CamLoader:
@@ -13,7 +12,7 @@ class CamLoader:
         self.valid = self.stream.isOpened()
         
         if not self.valid:
-            logger.warning(f"Warning: Cannot open camera {camera}")
+            logger.warning(f"warning: cannot open camera {camera}")
             return
             
         self.stream.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -53,7 +52,7 @@ class CamLoader:
         
         for i in range(max_checks):
             if self.ret:
-                logger.info(f"Camera started successfully after {i * check_interval:.1f}s")
+                logger.info(f"camera started successfully after {i * check_interval:.1f}s")
                 return self
             if self.error_msg:
                 self.stop()
@@ -110,7 +109,8 @@ class CamLoader:
                     self.ret = False
 
     def grabbed(self):
-        return self.ret and not self.stopped
+        return (hasattr(self, 'ret') and self.ret and 
+                hasattr(self, 'stopped') and not self.stopped)
 
     def getitem(self):
         if not self.grabbed():
@@ -129,19 +129,18 @@ class CamLoader:
             return frame
 
     def stop(self):
-        if self.stopped:
+        if hasattr(self, 'stopped') and self.stopped:
             return
             
-        self.stopped = True
+        if hasattr(self, 'stopped'):
+            self.stopped = True
         
-        if self.t is not None and self.t.is_alive():
+        if hasattr(self, 't') and self.t is not None and self.t.is_alive():
             self.t.join(timeout=2.0)  
             
-        if self.stream and self.stream.isOpened():
+        if hasattr(self, 'stream') and self.stream and self.stream.isOpened():
             self.stream.release()
 
-    def __del__(self):
-        self.stop()
 
     def __enter__(self):
         return self.start()
