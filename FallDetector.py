@@ -9,7 +9,29 @@ from PoseEstimateLoader import SPPE_FastPose
 from Track.Tracker import Detection, Tracker
 from ActionsEstLoader import TSSTG
 from loguru import logger
+import sys
 import os
+
+# Configure loguru for async logging
+logger.remove()  # Remove default handler
+logger.add(
+    "logs/fall_detection_{time:YYYY-MM-DD}.log",
+    rotation="1 day",
+    retention="7 days",
+    compression="zip",
+    enqueue=True,  # Enable async logging
+    backtrace=True,
+    diagnose=True,
+    format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level} | {name}:{function}:{line} | {message}"
+)
+# Keep console output with proper colors
+logger.add(
+    sys.stderr,
+    colorize=True,
+    format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}:{function}:{line}</cyan> | {message}",
+    level="DEBUG",
+    enqueue=True
+)
 import threading
 
 from __Fall import ResultHandler
