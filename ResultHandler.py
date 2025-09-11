@@ -11,6 +11,13 @@ from collections import deque
 g_images = {}
 g_images_lock = threading.Lock()
 
+# global person classifier instance and person class index (will be set by FallDetector)
+g_person_classifier = None
+g_person_class_index = None
+
+# get person confidence threshold from environment variable, default to 0.5
+PERSON_CONFIDENCE_THRESHOLD = float(os.environ.get('PERSON_CONFIDENCE_THRESHOLD', '0.5'))
+
 # action Classes:
 # Standing
 # Walking
@@ -54,6 +61,35 @@ def handle(task_id, action: str, track_id, bbox, score, ori_frame):
     norm_x2 = x2_orig / orig_w
     norm_y2 = y2_orig / orig_h
     logger.info(f"{action}: {score:.2f}% | bbox normalized: ({norm_x1:.3f}, {norm_y1:.3f}, {norm_x2:.3f}, {norm_y2:.3f})")
+    
+    # crop bbox region and verify if it's a person
+    cropped_region = ori_frame[y1_orig:y2_orig, x1_orig:x2_orig]
+    if cropped_region.size == 0:
+        return
+    
+    # use detection model to verify if person is present
+    person_score, xyxyn, cls = g_person_classifier.Predict(cropped_region)
+    
+    # check if person (class 0) is detected with sufficient confidence
+    person_detected = False
+    if person_score is not None and cls is not None:
+        if hasattr(cls, 'cpu'):
+            cls = cls.cpu()
+        if hasattr(person_score, 'cpu'):
+            person_score = person_score.cpu() if hasattr(person_score, 'cpu') else person_score
+            
+        # check for person detections
+        scores_list = person_score if isinstance(person_score, list) else [person_score]
+        for i, (class_id, conf) in enumerate(zip(cls, scores_list)):
+            if int(class_id) == g_person_class_index and float(conf) > PERSON_CONFIDENCE_THRESHOLD:
+                person_detected = True
+                logger.debug(f"person detected in fall region (confidence: {float(conf):.3f})")
+                break
+    
+    if not person_detected:
+        logger.debug(f"no person detected in fall region (threshold: {PERSON_CONFIDENCE_THRESHOLD})")
+        return
+    
     width = x2_orig - x1_orig
     height = y2_orig - y1_orig
 
