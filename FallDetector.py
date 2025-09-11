@@ -94,7 +94,7 @@ def Start(
                 return
             cam.start()
         except:
-            logger.warning("failed to open stream...")
+            logger.warning("exception failed to open stream...")
             return
           
     f = 0
