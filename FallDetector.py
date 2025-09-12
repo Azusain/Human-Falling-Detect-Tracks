@@ -1,9 +1,10 @@
 import asyncio
 import os
+import time
 import torch
 import numpy as np
 from Detection.Utils import ResizePadding
-from CameraLoader import CamLoader
+from AvCameraLoader import AvCamLoader
 from DetectorLoader import TinyYOLOv3_onecls
 from PoseEstimateLoader import SPPE_FastPose
 from Track.Tracker import Detection, Tracker
@@ -63,6 +64,7 @@ def build_preproc(inp_dets):
     return _preproc
 
 
+# TODO: prevent reloading model during camera reconnection.
 def Start(
         task_id,
         camera,
@@ -70,6 +72,20 @@ def Start(
         pose_input_size='224x160',
         pose_backbone='resnet50',
         device='cuda'):
+    
+    # initialize person classifier for fall verification if not already done
+    if ResultHandler.g_person_classifier is None:
+        logger.info("initializing person classifier for fall verification...")
+        try:
+            from api import YoloDetectionService
+            ResultHandler.g_person_classifier = YoloDetectionService("models/yolo11n.pt", 640)
+            ResultHandler.g_person_class_index = 0  # person class is index 0 in COCO dataset
+            logger.success("person classifier initialized successfully for fall detection")
+        except Exception as e:
+            logger.error(f"failed to initialize person classifier: {e}")
+            return
+    
+    logger.info(f"fall detection starting with person classifier ready")
     inp_dets = detection_input_size
     detect_model = TinyYOLOv3_onecls(inp_dets, device=device)
 
@@ -88,7 +104,7 @@ def Start(
     else:
         logger.info(f"streaming mode: {cam_source}")
         try:
-            cam = CamLoader(cam_source, preprocess=preproc)
+            cam = AvCamLoader(cam_source, preprocess=preproc, ori_return=True)
             if not cam.valid:
                 logger.warning("failed to open stream...")
                 return
@@ -100,7 +116,11 @@ def Start(
     f = 0
     while cam.grabbed():
         f += 1
-        frame = cam.getitem()
+        frame_data = cam.getitem()
+        if isinstance(frame_data, tuple):
+            frame, ori_frame = frame_data
+        else:
+            frame = frame_data
         # 检测
         detected = detect_model.detect(frame, need_resize=False, expand_bb=10)
 
@@ -139,7 +159,9 @@ def Start(
                 score = out[0].max() * 100
             
             if track.time_since_update == 0:
-                ResultHandler.handle(task_id, action, track_id, bbox, score, cam.ori_frame)
+                # use ori_frame from getitem if available, otherwise use current frame
+                result_frame = ori_frame if 'ori_frame' in locals() and ori_frame is not None else frame
+                ResultHandler.handle(task_id, action, track_id, bbox, score, result_frame)
 
         # check task status.
         with g_tasks_lock:
