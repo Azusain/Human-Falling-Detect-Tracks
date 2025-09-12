@@ -27,12 +27,24 @@ PERSON_CONFIDENCE_THRESHOLD = float(os.environ.get('PERSON_CONFIDENCE_THRESHOLD'
 # Sit down
 # Fall Down    
 # pending..    
+
+def is_action_safe(action: str) -> bool:
+    return (
+        not action.__contains__("Fall Down")
+        and not action.__contains__("Lying Down")
+        and not action.__contains__("Sitting")
+        and not action.__contains__("Sit down")
+    )
+    
 # fuck your 384 input.
 # TODO: track_id is unused.
-def handle(task_id, action: str, track_id, bbox, score, ori_frame):
-    if not action.__contains__("Fall Down") and not action.__contains__("Lying Down"):
-      # logger.info(f"skip action {action}")
+def handle(task_id, action: str, track_id, bbox, score, ori_frame, debug=False):
+    if is_action_safe(action):
+      if debug:
+        logger.debug(f"skip action {action}")
       return
+    if debug:
+      logger.debug(f"action -> {action}")
     # de-scale to original size.
     orig_h, orig_w = ori_frame.shape[:2]    
     scale = 384 / max(orig_h, orig_w)
@@ -49,6 +61,8 @@ def handle(task_id, action: str, track_id, bbox, score, ori_frame):
     
     # filter out the detection result that touch the boundary.
     if x1_orig <= 0 or y1_orig <= 0 or x2_orig >= orig_w or y2_orig >= orig_h:
+        if debug:
+          logger.debug("touch the boundary !!!")
         return
     x1_orig = max(0, int(x1_orig))
     y1_orig = max(0, int(y1_orig))
@@ -70,26 +84,42 @@ def handle(task_id, action: str, track_id, bbox, score, ori_frame):
     # use detection model to verify if person is present
     person_score, xyxyn, cls = g_person_classifier.Predict(cropped_region)
     
-    # check if person (class 0) is detected with sufficient confidence
+    # proper person detection check
     person_detected = False
     if person_score is not None and cls is not None:
+        # convert tensors to lists for easier handling
         if hasattr(cls, 'cpu'):
             cls = cls.cpu()
         if hasattr(person_score, 'cpu'):
-            person_score = person_score.cpu() if hasattr(person_score, 'cpu') else person_score
+            person_score = person_score.cpu()
             
-        # check for person detections
-        scores_list = person_score if isinstance(person_score, list) else [person_score]
-        for i, (class_id, conf) in enumerate(zip(cls, scores_list)):
-            if int(class_id) == g_person_class_index and float(conf) > PERSON_CONFIDENCE_THRESHOLD:
-                person_detected = True
-                logger.debug(f"person detected in fall region (confidence: {float(conf):.3f})")
-                break
+        # convert to lists
+        cls_list = cls.tolist() if hasattr(cls, 'tolist') else (cls if isinstance(cls, list) else [cls])
+        if isinstance(person_score, (list, tuple)):
+            scores_list = person_score
+        elif hasattr(person_score, 'tolist'):
+            scores_list = person_score.tolist()
+        else:
+            scores_list = [person_score]
+            
+        # check each detection to see if any is a person (class 0) with high confidence
+        for i, class_id in enumerate(cls_list):
+            if i < len(scores_list):
+                conf = scores_list[i]
+                if int(class_id) == 0 and float(conf) > PERSON_CONFIDENCE_THRESHOLD:  # class 0 is person in COCO
+                    person_detected = True
+                    logger.debug(f"person detected in fall region (confidence: {float(conf):.3f})")
+                    break
+        
+        if not person_detected:
+            if debug:
+              logger.debug(f"no person detected in fall region - detected classes: {cls_list}")
     
-    if not person_detected:
-        logger.debug(f"no person detected in fall region (threshold: {PERSON_CONFIDENCE_THRESHOLD})")
+    elif not person_detected:
+        if debug:
+          logger.debug(f"no person detected in fall region (threshold: {PERSON_CONFIDENCE_THRESHOLD})")
         return
-    
+
     width = x2_orig - x1_orig
     height = y2_orig - y1_orig
 
