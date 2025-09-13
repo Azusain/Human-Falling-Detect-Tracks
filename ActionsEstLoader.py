@@ -28,10 +28,10 @@ class TSSTG(object):
         # load weights with proper device mapping
         if device == 'cpu':
             # for CPU, explicitly map to CPU
-            self.model.load_state_dict(torch.load(weight_file, map_location=torch.device('cpu')))
+            self.model.load_state_dict(torch.load(weight_file, map_location=torch.device('cpu'), weights_only=False))
         else:
             # for GPU, map to the specific GPU device (handles CPU->GPU conversion)
-            self.model.load_state_dict(torch.load(weight_file, map_location=self.device))
+            self.model.load_state_dict(torch.load(weight_file, map_location=self.device, weights_only=False))
         
         # move model to target device after loading weights
         self.model = self.model.to(self.device)
