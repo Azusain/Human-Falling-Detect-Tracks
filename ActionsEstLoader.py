@@ -23,11 +23,18 @@ class TSSTG(object):
         self.num_class = len(self.class_names)
         self.device = device
 
-        self.model = TwoStreamSpatialTemporalGraph(self.graph_args, self.num_class).to(self.device)
+        self.model = TwoStreamSpatialTemporalGraph(self.graph_args, self.num_class)
+        
+        # load weights with proper device mapping
         if device == 'cpu':
+            # for CPU, explicitly map to CPU
             self.model.load_state_dict(torch.load(weight_file, map_location=torch.device('cpu')))
         else:
-            self.model.load_state_dict(torch.load(weight_file))
+            # for GPU, map to the specific GPU device (handles CPU->GPU conversion)
+            self.model.load_state_dict(torch.load(weight_file, map_location=self.device))
+        
+        # move model to target device after loading weights
+        self.model = self.model.to(self.device)
         self.model.eval()
 
     def predict(self, pts, image_size):

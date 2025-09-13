@@ -37,9 +37,10 @@ class TinyYOLOv3_onecls(object):
         self.input_size = input_size
         self.model = Darknet(config_file).to(device)
         if device == 'cpu':
-            self.model.load_state_dict(torch.load(weight_file, map_location=torch.device('cpu')))
+          # TODO: in torch 2.6, the default args for weights_only is True.
+            self.model.load_state_dict(torch.load(weight_file, map_location=torch.device('cpu'), weights_only=False))
         else:
-            self.model.load_state_dict(torch.load(weight_file))
+            self.model.load_state_dict(torch.load(weight_file, weights_only=False))
         self.model.eval()
         self.device = device
 
