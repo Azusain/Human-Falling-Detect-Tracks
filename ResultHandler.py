@@ -2,10 +2,18 @@ import cv2
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
 import os
+import sys
 import numpy as np
 from loguru import logger
 import threading
 from collections import deque
+
+# add parent directory to path to import shared_state
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    import shared_state
+except ImportError:
+    shared_state = None
 
 # TODO: make it configurable.
 g_images = {}
@@ -133,11 +141,29 @@ def handle(task_id, action: str, track_id, bbox, score, ori_frame, debug=False):
             "height": float(height)
         }
     }
+    # save to both local and shared state
+    result_data = {
+        "image": ori_frame.copy(),
+        "results": result
+    }
+    
+    # save to local state (for backward compatibility)
     with g_images_lock:
         if task_id not in g_images:
-            g_images[task_id] = deque(maxlen=100)  
-        g_images[task_id].append({
-            "image": ori_frame.copy(),
-            "results": result
-        })
+            logger.info(f"create new local queue for task {task_id}")
+            g_images[task_id] = deque(maxlen=100)
+        g_images[task_id].append(result_data)
+        logger.info(f"save result to local state for {task_id} (queue length: {len(g_images[task_id])})")
+    
+    # also save to shared state if available
+    if shared_state is not None:
+        shared_g_images = shared_state.get_images_dict()
+        shared_g_images_lock = shared_state.get_images_lock()
+        
+        with shared_g_images_lock:
+            if task_id not in shared_g_images:
+                logger.info(f"create new shared queue for task {task_id}")
+                shared_g_images[task_id] = deque(maxlen=100)
+            shared_g_images[task_id].append(result_data)
+            logger.info(f"save result to shared state for {task_id} (queue length: {len(shared_g_images[task_id])})")
 
