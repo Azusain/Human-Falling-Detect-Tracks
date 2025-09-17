@@ -24,7 +24,7 @@ g_person_classifier = None
 g_person_class_index = None
 
 # get person confidence threshold from environment variable, default to 0.5
-PERSON_CONFIDENCE_THRESHOLD = float(os.environ.get('PERSON_CONFIDENCE_THRESHOLD', '0.5'))
+PERSON_CONFIDENCE_THRESHOLD = float(os.environ.get('PERSON_CONFIDENCE_THRESHOLD', '0.6'))
 
 # action Classes:
 # Standing
@@ -46,13 +46,9 @@ def is_action_safe(action: str) -> bool:
     
 # fuck your 384 input.
 # TODO: track_id is unused.
-def handle(task_id, action: str, track_id, bbox, score, ori_frame, debug=False):
+def handle(task_id, action: str, track_id, bbox, score, ori_frame):
     if is_action_safe(action):
-      if debug:
-        logger.debug(f"skip action {action}")
-      return
-    if debug:
-      logger.debug(f"action -> {action}")
+        return
     # de-scale to original size.
     orig_h, orig_w = ori_frame.shape[:2]    
     scale = 384 / max(orig_h, orig_w)
@@ -69,8 +65,6 @@ def handle(task_id, action: str, track_id, bbox, score, ori_frame, debug=False):
     
     # filter out the detection result that touch the boundary.
     if x1_orig <= 0 or y1_orig <= 0 or x2_orig >= orig_w or y2_orig >= orig_h:
-        if debug:
-          logger.debug("touch the boundary !!!")
         return
     x1_orig = max(0, int(x1_orig))
     y1_orig = max(0, int(y1_orig))
@@ -82,7 +76,6 @@ def handle(task_id, action: str, track_id, bbox, score, ori_frame, debug=False):
     norm_y1 = y1_orig / orig_h
     norm_x2 = x2_orig / orig_w
     norm_y2 = y2_orig / orig_h
-    logger.info(f"{action}: {score:.2f}% | bbox normalized: ({norm_x1:.3f}, {norm_y1:.3f}, {norm_x2:.3f}, {norm_y2:.3f})")
     
     # crop bbox region and verify if it's a person
     cropped_region = ori_frame[y1_orig:y2_orig, x1_orig:x2_orig]
@@ -116,16 +109,12 @@ def handle(task_id, action: str, track_id, bbox, score, ori_frame, debug=False):
                 conf = scores_list[i]
                 if int(class_id) == 0 and float(conf) > PERSON_CONFIDENCE_THRESHOLD:  # class 0 is person in COCO
                     person_detected = True
-                    logger.debug(f"person detected in fall region (confidence: {float(conf):.3f})")
                     break
         
         if not person_detected:
-            if debug:
-              logger.debug(f"no person detected in fall region - detected classes: {cls_list}")
+            return
     
     elif not person_detected:
-        if debug:
-          logger.debug(f"no person detected in fall region (threshold: {PERSON_CONFIDENCE_THRESHOLD})")
         return
 
     width = x2_orig - x1_orig
@@ -150,10 +139,8 @@ def handle(task_id, action: str, track_id, bbox, score, ori_frame, debug=False):
     # save to local state (for backward compatibility)
     with g_images_lock:
         if task_id not in g_images:
-            logger.info(f"create new local queue for task {task_id}")
             g_images[task_id] = deque(maxlen=100)
         g_images[task_id].append(result_data)
-        logger.info(f"save result to local state for {task_id} (queue length: {len(g_images[task_id])})")
     
     # also save to shared state if available
     if shared_state is not None:
@@ -162,8 +149,8 @@ def handle(task_id, action: str, track_id, bbox, score, ori_frame, debug=False):
         
         with shared_g_images_lock:
             if task_id not in shared_g_images:
-                logger.info(f"create new shared queue for task {task_id}")
                 shared_g_images[task_id] = deque(maxlen=100)
             shared_g_images[task_id].append(result_data)
-            logger.info(f"save result to shared state for {task_id} (queue length: {len(shared_g_images[task_id])})")
+            # Log successful fall detection with model type
+            logger.success(f"[fall] detected {action} (score: {score:.2f}%)")
 
